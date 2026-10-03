@@ -1,0 +1,6 @@
+{
+  "name": "كاشير السوبر ماركت بدون باركود",
+  "description": "برنامج كاشير وإدارة سوبر ماركت متكامل بدون باركود — بيع سريع، إدارة ديون وشكك، الخزينة، المشتريات، المصروفات، وتقارير الأرباح والجرد بدون إنترنت.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

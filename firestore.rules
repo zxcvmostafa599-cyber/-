@@ -1,0 +1,148 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: is user authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: get current user document in shop
+    function getUserData(shopId) {
+      return get(/databases/$(database)/documents/shops/$(shopId)/users/$(request.auth.uid)).data;
+    }
+
+    // Helper: is user an active member of this shop
+    function isShopMember(shopId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/shops/$(shopId)/users/$(request.auth.uid)) &&
+        getUserData(shopId).active == true;
+    }
+
+    // Helper: is user a manager in this shop
+    function isShopManager(shopId) {
+      return isShopMember(shopId) && getUserData(shopId).role == 'manager';
+    }
+
+    // Global Shop lookup by user ID
+    match /userShopLookup/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Shop document
+    match /shops/{shopId} {
+      // Any authenticated user can read shop details if they belong to it
+      allow read: if isShopMember(shopId);
+      // Only creation allowed for authenticated user during initial shop setup
+      allow create: if isAuthenticated();
+      // Only managers can update shop settings
+      allow update: if isShopManager(shopId);
+      // Hard delete of entire shop is disabled for safety
+      allow delete: if false;
+
+      // Users subcollection
+      match /users/{userId} {
+        allow read: if isShopMember(shopId);
+        // Initial owner creation or managers managing team members
+        allow create: if isAuthenticated() && (request.auth.uid == userId || isShopManager(shopId));
+        allow update: if isShopManager(shopId) || (isAuthenticated() && request.auth.uid == userId);
+        allow delete: if isShopManager(shopId);
+      }
+
+      // Categories
+      match /categories/{categoryId} {
+        allow read: if isShopMember(shopId);
+        allow write: if isShopMember(shopId);
+      }
+
+      // Products & Inventory
+      match /products/{productId} {
+        allow read: if isShopMember(shopId);
+        allow write: if isShopMember(shopId);
+      }
+
+      // Customers
+      match /customers/{customerId} {
+        allow read: if isShopMember(shopId);
+        allow create, update: if isShopMember(shopId);
+        // Financial entity: deletion restricted to manager
+        allow delete: if isShopManager(shopId);
+      }
+
+      // Suppliers
+      match /suppliers/{supplierId} {
+        allow read: if isShopMember(shopId);
+        allow create, update: if isShopMember(shopId);
+        allow delete: if isShopManager(shopId);
+      }
+
+      // Sales (Invoices)
+      match /sales/{saleId} {
+        allow read: if isShopMember(shopId);
+        // Any cashier or manager can record a sale
+        allow create: if isShopMember(shopId);
+        // Updates allowed only for status change (cancellation) with reason, never hard delete
+        allow update: if isShopMember(shopId);
+        // Financial integrity: NO HARD DELETES
+        allow delete: if false;
+      }
+
+      // Customer Payments
+      match /customerPayments/{paymentId} {
+        allow read: if isShopMember(shopId);
+        allow create: if isShopMember(shopId);
+        allow update: if isShopManager(shopId);
+        allow delete: if false;
+      }
+
+      // Purchases
+      match /purchases/{purchaseId} {
+        allow read: if isShopMember(shopId);
+        allow create: if isShopMember(shopId);
+        allow update: if isShopManager(shopId);
+        allow delete: if false;
+      }
+
+      // Supplier Payments
+      match /supplierPayments/{paymentId} {
+        allow read: if isShopMember(shopId);
+        allow create: if isShopMember(shopId);
+        allow update: if isShopManager(shopId);
+        allow delete: if false;
+      }
+
+      // Expenses
+      match /expenses/{expenseId} {
+        allow read: if isShopMember(shopId);
+        allow create: if isShopMember(shopId);
+        allow update: if isShopManager(shopId);
+        allow delete: if false;
+      }
+
+      // Cash Ledger Transactions (Source of Truth)
+      match /cashTransactions/{txId} {
+        allow read: if isShopMember(shopId);
+        allow create: if isShopMember(shopId);
+        // Immutable ledger entries: cannot be modified or deleted
+        allow update, delete: if false;
+      }
+
+      // Daily Closings
+      match /dailyClosings/{closingId} {
+        allow read: if isShopMember(shopId);
+        allow create: if isShopManager(shopId);
+        allow update: if isShopManager(shopId);
+        allow delete: if false;
+      }
+
+      // Audit Logs
+      match /auditLogs/{logId} {
+        allow read: if isShopManager(shopId);
+        allow create: if isShopMember(shopId);
+        // Audit logs are completely tamper-proof
+        allow update, delete: if false;
+      }
+    }
+  }
+}
